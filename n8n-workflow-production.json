@@ -1,0 +1,215 @@
+{
+  "name": "Bill Splitter - WhatsApp Workflow (Producción)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bill-splitter",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "bill-splitter-webhook"
+    },
+    {
+      "parameters": {
+        "functionCode": "const data = items[0].json;\nconst totalAmount = data.totalAmount;\nconst amountPerPerson = data.amountPerPerson;\nconst numberOfPeople = data.numberOfPeople;\nconst bankInfo = data.bankInfo;\n\nlet message = `💰 *División de Factura*\\n\\n`;\nmessage += `Total: $${totalAmount.toFixed(2)}\\n`;\nmessage += `Por persona: $${amountPerPerson.toFixed(2)} (${numberOfPeople} personas)\\n\\n`;\n\nif (data.sendType === 'individual' && data.contacts) {\n  message += `👥 *Participantes:*\\n`;\n  data.contacts.forEach(contact => {\n    message += `- ${contact.name}: $${amountPerPerson.toFixed(2)}\\n`;\n  });\n} else if (data.sendType === 'group') {\n  message += `👥 *Grupo:* ${data.group.name}\\n`;\n}\n\nmessage += `\\n🏦 *Datos de pago:*\\n`;\nmessage += `Banco: ${bankInfo.bankName}\\n`;\nmessage += `Cuenta ${bankInfo.accountType}: ${bankInfo.accountNumber}\\n`;\nmessage += `Titular: ${bankInfo.accountHolder}\\n\\n`;\nmessage += `Por favor realiza tu transferencia y confirma el pago. ¡Gracias! 🙏`;\n\nreturn [{\n  json: {\n    sendType: data.sendType,\n    message: message,\n    contacts: data.contacts || [],\n    group: data.group || null,\n    invoices: data.invoices || [],\n    totalAmount: totalAmount,\n    amountPerPerson: amountPerPerson\n  }\n}];"
+      },
+      "id": "process-data",
+      "name": "Process Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.sendType}}",
+              "operation": "equals",
+              "value2": "individual"
+            }
+          ]
+        }
+      },
+      "id": "check-send-type",
+      "name": "Check Send Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "contacts",
+        "options": {}
+      },
+      "id": "split-contacts",
+      "name": "Split Contacts",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/{{$env.WHATSAPP_PHONE_NUMBER_ID}}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{$json.phone}}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"{{$node['Process Data'].json.message}}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "whatsapp-individual",
+      "name": "WhatsApp Individual",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "whatsapp-credentials",
+          "name": "WhatsApp Business API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/{{$env.WHATSAPP_PHONE_NUMBER_ID}}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{$json.group.groupId}}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"{{$json.message}}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "whatsapp-group",
+      "name": "WhatsApp Group",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "whatsapp-credentials",
+          "name": "WhatsApp Business API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const allItems = items;\nconst sentContacts = [];\n\nallItems.forEach(item => {\n  if (item.json.phone) {\n    sentContacts.push(item.json.phone);\n  } else if (item.json.group) {\n    sentContacts.push(item.json.group.name);\n  }\n});\n\nreturn [{\n  json: {\n    success: true,\n    message: \"Envío completado exitosamente\",\n    sentTo: sentContacts\n  }\n}];"
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Data": {
+      "main": [
+        [
+          {
+            "node": "Check Send Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Send Type": {
+      "main": [
+        [
+          {
+            "node": "Split Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WhatsApp Group",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Contacts": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Individual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Individual": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Group": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "tags": [],
+  "pinData": {}
+}

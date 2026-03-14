@@ -1,0 +1,69 @@
+{
+  "name": "Bill Splitter - Test Workflow (Sin WhatsApp)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bill-splitter",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "bill-splitter-webhook"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Simular procesamiento\nconst data = items[0].json;\n\n// Crear mensaje simulado\nconst message = `💰 División de Factura\\n\\nTotal: $${data.totalAmount}\\nPor persona: $${data.amountPerPerson}\\n\\n🏦 Banco: ${data.bankInfo.bankName}\\nCuenta: ${data.bankInfo.accountNumber}\\nTitular: ${data.bankInfo.accountHolder}`;\n\n// Simular respuesta exitosa\nlet sentTo = [];\n\nif (data.sendType === 'individual' && data.contacts) {\n  sentTo = data.contacts.map(c => c.phone);\n} else if (data.sendType === 'group' && data.group) {\n  sentTo = [data.group.name];\n}\n\nreturn [{\n  json: {\n    success: true,\n    message: \"Envío simulado exitosamente (WhatsApp pendiente de aprobación)\",\n    sentTo: sentTo,\n    simulatedMessage: message,\n    receivedData: data\n  }\n}];"
+      },
+      "id": "process-simulate",
+      "name": "Simular Envío",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [650, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Simular Envío",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simular Envío": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "tags": [],
+  "pinData": {},
+  "versionId": "1"
+}
